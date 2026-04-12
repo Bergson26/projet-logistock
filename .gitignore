@@ -1,0 +1,16 @@
+# Cles SSH — ne jamais commiter
+*.pem
+*.pem.pub
+
+# Base de donnees SQLite locale
+*.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Donnees Docker volumes locaux
+data-prod/
+data-preprod/
