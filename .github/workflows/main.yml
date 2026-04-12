@@ -1,0 +1,37 @@
+name: Pipeline DevSecOps LogiStock
+
+# Le workflow se declenche uniquement lors d'un push sur la branche main
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Etape 1 : Recuperation du code source depuis le depot GitHub
+      - name: Checkout du code source
+        uses: actions/checkout@v3
+
+      # Etape 2 : Tests automatises (unitaires, fonctionnels)
+      - name: Tests automatises avec Pytest
+        run: |
+          pip install flask prometheus_client pytest
+          pytest test_app.py -v
+
+      # Etape 3 : Construction de l'image Docker
+      - name: Build de l'image Docker applicative
+        run: docker build -t logistock-api:latest .
+
+      # Etape 4 : Scan de vulnerabilites CVE sur l'image Docker (Barriere bloquante)
+      - name: Scan de vulnerabilites Trivy sur l'image Docker
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'logistock-api:latest'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
