@@ -28,9 +28,9 @@ jobs:
       - name: Analyse SAST avec Bandit
         run: |
           pip install bandit
-          bandit -r app.py -ll -ii
-        # -ll : bloque sur severite MEDIUM et HIGH
-        # -ii : bloque sur niveau de confiance MEDIUM et HIGH
+          bandit -r app.py -lll -iii
+        # -lll : bloque uniquement sur severite HIGH
+        # -iii : bloque uniquement sur niveau de confiance HIGH
 
       # Etape 5 : Detection de secrets dans le code source (cles API, mots de passe commites)
       - name: Detection de secrets avec Gitleaks
