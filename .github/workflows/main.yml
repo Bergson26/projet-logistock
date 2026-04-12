@@ -7,25 +7,42 @@ on:
       - main
 
 jobs:
-  build-and-test:
+  build-scan-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
       # Etape 1 : Recuperation du code source depuis le depot GitHub
       - name: Checkout du code source
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
-      # Etape 2 : Tests automatises (unitaires, fonctionnels)
+      # Etape 2 : Tests automatises (unitaires, fonctionnels, securite)
       - name: Tests automatises avec Pytest
         run: |
           pip install flask prometheus_client pytest
           pytest test_app.py -v
 
-      # Etape 3 : Construction de l'image Docker
+      # Etape 4 : Analyse statique de securite du code Python (SAST)
+      # Bandit detecte : injections SQL, mots de passe en dur, fonctions dangereuses
+      - name: Analyse SAST avec Bandit
+        run: |
+          pip install bandit
+          bandit -r app.py -ll -ii
+        # -ll : bloque sur severite MEDIUM et HIGH
+        # -ii : bloque sur niveau de confiance MEDIUM et HIGH
+
+      # Etape 5 : Detection de secrets dans le code source (cles API, mots de passe commites)
+      - name: Detection de secrets avec Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Etape 6 : Construction de l'image Docker locale pour l'analyse
       - name: Build de l'image Docker applicative
         run: docker build -t logistock-api:latest .
 
-      # Etape 4 : Scan de vulnerabilites CVE sur l'image Docker (Barriere bloquante)
+      # Etape 7 : Scan de vulnerabilites CVE sur l'image Docker (Barriere bloquante)
       - name: Scan de vulnerabilites Trivy sur l'image Docker
         uses: aquasecurity/trivy-action@master
         with:
@@ -35,3 +52,53 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+
+      # Etape 8 : Scan de secrets dans le systeme de fichiers de l'image
+      - name: Scan de secrets dans l'image Docker (Trivy)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'logistock-api:latest'
+          format: 'table'
+          exit-code: '1'
+          scanners: 'secret'
+
+      # Etape 9 : Deploiement sur la pre-production pour validation fonctionnelle
+      - name: Deploiement sur la pre-production
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.AWS_HOST_IP }}
+          username: ec2-user
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd /home/ec2-user/projet-logistock
+            git pull origin main
+            docker-compose up -d --build api-preprod
+
+      # Etape 10 : Test fonctionnel de la pre-production avant deploiement en production
+      - name: Test de sante de la pre-production
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.AWS_HOST_IP }}
+          username: ec2-user
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            sleep 15
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "ERREUR : La pre-production ne repond pas (HTTP $HTTP_CODE)"
+              exit 1
+            fi
+            echo "Pre-production validee (HTTP $HTTP_CODE) - Deploiement en production autorise."
+
+      # Etape 11 : Deploiement en production (uniquement si toutes les barrieres precedentes sont passees)
+      - name: Deploiement en production sur EC2
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.AWS_HOST_IP }}
+          username: ec2-user
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            cd /home/ec2-user/projet-logistock
+            git pull origin main
+            docker-compose up -d --build api-prod
+            docker image prune -f
