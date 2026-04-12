@@ -104,7 +104,7 @@ def index():
     articles = c.fetchall()
     conn.close()
     REQUETES_TOTALES.labels(methode='GET', route='/', statut='200').inc()
-    return render_template_string(TEMPLATE_HTML, articles=articles)
+    return render_template_string(TEMPLATE_HTML, articles=articles)  # nosec B703 — template statique, aucune entree utilisateur injectee directement
 
 # Route 2 : Ajout via le formulaire web
 @app.route('/ajouter', methods=['POST'])
