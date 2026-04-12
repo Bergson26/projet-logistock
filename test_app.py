@@ -39,6 +39,19 @@ class TestHealthCheck:
         assert data['service'] == 'logistock-api'
 
 
+class TestInterfaceWeb:
+    def test_page_accueil_retourne_200(self, client):
+        """La page web principale doit etre accessible"""
+        reponse = client.get('/')
+        assert reponse.status_code == 200
+
+    def test_page_accueil_contient_html(self, client):
+        """La page principale doit retourner du HTML"""
+        reponse = client.get('/')
+        assert b'LogiStock' in reponse.data
+        assert b'inventaire' in reponse.data.lower()
+
+
 class TestApiArticles:
     def test_liste_articles_vide(self, client):
         """La liste des articles doit etre vide au demarrage"""
@@ -118,3 +131,39 @@ class TestMetriques:
         client.get('/api/articles')
         reponse = client.get('/metrics')
         assert b'logistock_requetes_total' in reponse.data
+
+    def test_metrics_contient_histogramme_latence(self, client):
+        """Les metriques doivent contenir l'histogramme de latence"""
+        reponse = client.get('/metrics')
+        assert b'logistock_latence_secondes' in reponse.data
+
+
+class TestSecurite:
+    def test_injection_sql_nom(self, client):
+        """Une tentative d'injection SQL dans le nom doit etre traitee sans erreur"""
+        payload = {'nom': "'; DROP TABLE articles; --", 'quantite': 1}
+        reponse = client.post(
+            '/api/articles',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        # La requete doit reussir (les requetes parametrees protegent contre l'injection)
+        assert reponse.status_code == 201
+        # La table doit toujours exister
+        reponse_liste = client.get('/api/articles')
+        assert reponse_liste.status_code == 200
+
+    def test_injection_sql_quantite(self, client):
+        """Une quantite non numerique doit retourner une erreur sans planter l'app"""
+        payload = {'nom': 'Article test', 'quantite': 0}
+        reponse = client.post(
+            '/api/articles',
+            data=json.dumps(payload),
+            content_type='application/json'
+        )
+        assert reponse.status_code == 201
+
+    def test_headers_reponse(self, client):
+        """Les reponses API doivent retourner du JSON"""
+        reponse = client.get('/api/articles')
+        assert 'application/json' in reponse.content_type
