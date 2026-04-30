@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 # Auteur : Bergson Jean-Michel AQUEREBURU
 # Role : Creation automatisee de l'infrastructure reseau et calcul sur AWS
 # Projet : LogiStock
@@ -9,6 +10,8 @@ AMI_AL2023="ami-02ea01341a2884771"  # Image Amazon Linux 2023 (Region Paris) - u
 TYPE_INSTANCE="t3.micro"            # Instance eligible au Free Tier (budget 0)
 NOM_CLE="logistock-ssh-key"
 GROUPE_SECU="logistock-sec-group"
+# Remplacer par l'IP fixe de l'administrateur ou le CIDR de l'ecole pour le moindre privilege
+ADMIN_CIDR="0.0.0.0/0"
 
 echo "Demarrage du provisionnement de l'infrastructure..."
 
@@ -39,25 +42,25 @@ echo "Groupe de securite cree : $SG_ID"
 
 # 3. Configuration des regles reseau (Principe de moindre privilege)
 
-# Port 22 pour mon acces administrateur et celui de l'agent GitHub Actions
+# Port 22 : acces SSH restreint a l'administrateur uniquement (moindre privilege)
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
-    --protocol tcp --port 22 --cidr 0.0.0.0/0
+    --protocol tcp --port 22 --cidr $ADMIN_CIDR
 
-# Port 5000 pour l'acces des logisticiens a l'environnement de Production
+# Port 5000 : ouvert au monde entier — acces des logisticiens a l'application de production
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
     --protocol tcp --port 5000 --cidr 0.0.0.0/0
 
-# Port 8080 dedie a l'environnement de Pre-production (tests automatises)
+# Port 8080 : pre-production restreinte a l'administrateur (pas d'acces public)
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
-    --protocol tcp --port 8080 --cidr 0.0.0.0/0
+    --protocol tcp --port 8080 --cidr $ADMIN_CIDR
 
-# Port 3000 pour l'acces a l'interface de supervision Grafana
+# Port 3000 : Grafana restreint a l'administrateur (donnees de supervision sensibles)
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
-    --protocol tcp --port 3000 --cidr 0.0.0.0/0
+    --protocol tcp --port 3000 --cidr $ADMIN_CIDR
 
 echo "Regles reseau configurees."
 
@@ -72,8 +75,4 @@ aws ec2 run-instances \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Serveur-LogiStock-Prod}]'
 
 echo "L'instance EC2 demarre sur AWS."
-
-# 5. Mise a jour de la documentation technique
-echo "" >> README.md
-echo "- Provisionnement : $(date '+%Y-%m-%d') - Instance $TYPE_INSTANCE, region $REGION, AMI $AMI_AL2023" >> README.md
-echo "Documentation mise a jour dans README.md."
+echo "Provisionnement termine : instance $TYPE_INSTANCE, region $REGION."
