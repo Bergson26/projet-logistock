@@ -1,0 +1,63 @@
+# Auteur : Bergson Jean-Michel AQUEREBURU
+# Role : Configuration automatisee du serveur EC2 LogiStock
+# Projet : LogiStock — Titre Professionnel ASD Niveau 6
+#
+# Separation des responsabilites :
+#   Terraform  → provisionnement de l'infrastructure (VPC, SG, EC2)
+#   Ansible    → configuration du serveur (Docker, docker-compose, deploiement)
+#
+# Usage : ansible-playbook -i <IP_EC2>, -u ec2-user --private-key logistock-ssh-key.pem playbook.yml
+
+---
+- name: Configuration du serveur LogiStock
+  hosts: all
+  become: true
+
+  tasks:
+
+    # --------------------------------------------------------
+    # 1. Installation de Docker
+    # --------------------------------------------------------
+    - name: Installer Docker
+      ansible.builtin.dnf:
+        name: docker
+        state: present
+
+    - name: Demarrer et activer Docker au boot
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Ajouter ec2-user au groupe docker
+      ansible.builtin.user:
+        name: ec2-user
+        groups: docker
+        append: true
+
+    # --------------------------------------------------------
+    # 2. Installation de Docker Compose
+    # --------------------------------------------------------
+    - name: Installer Docker Compose plugin
+      ansible.builtin.dnf:
+        name: docker-compose-plugin
+        state: present
+
+    # --------------------------------------------------------
+    # 3. Cloner le depot si absent
+    # --------------------------------------------------------
+    - name: Cloner le depot LogiStock
+      ansible.builtin.git:
+        repo: "https://github.com/Bergson26/projet-logistock.git"
+        dest: /home/ec2-user/projet-logistock
+        version: main
+        force: false
+
+    # --------------------------------------------------------
+    # 4. Lancement de l'application via Docker Compose
+    # --------------------------------------------------------
+    - name: Lancer tous les services Docker Compose
+      ansible.builtin.command:
+        cmd: docker compose up -d
+        chdir: /home/ec2-user/projet-logistock
+      changed_when: true
