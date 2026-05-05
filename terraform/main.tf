@@ -21,12 +21,13 @@ provider "aws" {
 
 # ============================================================
 # VARIABLE — IP administrateur (moindre privilege)
-# Remplacer par l'IP fixe de l'admin ou le CIDR de l'ecole
+# Aucune valeur par defaut — force la specification explicite
+# Usage : terraform apply -var admin_cidr="<TON_IP>/32"
 # ============================================================
 variable "admin_cidr" {
-  description = "CIDR autorise pour SSH, preprod et Grafana (acces administrateur uniquement)"
+  description = "CIDR autorise pour SSH, preprod et Grafana (acces administrateur uniquement). Exemple : terraform apply -var admin_cidr=203.0.113.10/32"
   type        = string
-  default     = "0.0.0.0/0"
+  # Aucun default — si oublie, Terraform bloque et demande la valeur
 }
 
 # ============================================================
@@ -89,8 +90,8 @@ resource "aws_security_group" "logistock" {
   }
 
   tags = {
-    Name    = "logistock-sec-group"
-    Projet  = "LogiStock"
+    Name   = "logistock-sec-group"
+    Projet = "LogiStock"
   }
 }
 
