@@ -17,5 +17,7 @@ RUN mkdir -p /app/data
 # Exposition du port d'ecoute interne de l'API Flask
 EXPOSE 5000
 
-# Commande de lancement de l'application
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" || exit 1
+
 CMD ["python", "app.py"]
