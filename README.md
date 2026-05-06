@@ -60,10 +60,14 @@ projet-logistock/
 ├── prometheus.yml          # Configuration des jobs de scraping
 ├── grafana-dashboard.json  # Dashboard exporté (5 panneaux + 2 alertes)
 ├── backup.sh               # Script de sauvegarde automatique SQLite
-├── provision.sh            # Script de provisionnement AWS (EC2 + Security Group)
+├── provision.sh            # Script Bash de provisionnement AWS (utilisé en production)
+├── terraform/
+│   └── main.tf             # Infrastructure as Code — alternative Terraform à provision.sh
+├── ansible/
+│   └── playbook.yml        # Configuration du serveur : installation Docker + lancement docker-compose
 └── .github/
     └── workflows/
-        └── main.yml        # Pipeline CI/CD GitHub Actions
+        └── main.yml        # Pipeline CI/CD GitHub Actions (11 étapes)
 ```
 
 ---
@@ -79,7 +83,20 @@ projet-logistock/
 
 ## Déploiement de l'infrastructure
 
-### 1. Génération de la clé SSH
+Deux approches sont disponibles pour provisionner l'infrastructure :
+
+| Approche | Fichier | Statut |
+|---|---|---|
+| Script Bash + AWS CLI | `provision.sh` | Utilisé en production pour ce projet |
+| Infrastructure as Code | `terraform/main.tf` | Alternative IaC standard (recommandée) |
+
+La configuration du serveur (Docker, docker-compose) est ensuite gérée par Ansible (`ansible/playbook.yml`), qui représente la séparation standard **Terraform = provisionnement / Ansible = configuration**.
+
+---
+
+### Option A — Bash (utilisé en production)
+
+#### 1. Génération de la clé SSH
 
 La clé SSH est générée localement pour éviter les problèmes de format (CRLF) liés à AWS CLI sur Windows :
 
@@ -91,43 +108,41 @@ aws ec2 import-key-pair \
   --public-key-material fileb://logistock-ssh-key.pem.pub
 ```
 
-### 2. Provisionnement automatique
+#### 2. Provisionnement via script
 
 ```bash
 chmod +x provision.sh
 ./provision.sh
 ```
 
-Le script crée :
-- Un Security Group avec les ports 22, 5000, 8080, 3000 ouverts
-- Une instance EC2 t3.micro Amazon Linux 2023
+Le script crée un Security Group (ports 22, 5000, 8080, 3000) et une instance EC2 t3.micro Amazon Linux 2023.
 
-### 3. Installation des dépendances sur l'EC2
+#### 3. Configuration du serveur via Ansible
 
 ```bash
-ssh -i logistock-ssh-key.pem ec2-user@<IP_PUBLIQUE>
-
-# Docker
-sudo dnf install -y docker
-sudo systemctl enable docker --now
-sudo usermod -aG docker ec2-user
-
-# Docker Compose (plugin non disponible sur AL2023)
-sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64" \
-  -o /usr/local/bin/docker-compose
-sudo chmod +x /usr/local/bin/docker-compose
-
-# cronie pour le crontab
-sudo dnf install -y cronie
-sudo systemctl enable crond --now
+ansible-playbook -i <IP_EC2>, -u ec2-user --private-key logistock-ssh-key.pem ansible/playbook.yml
 ```
 
-### 4. Déploiement de l'application
+Le playbook installe Docker, Docker Compose, clone le dépôt et lance tous les services.
+
+---
+
+### Option B — Terraform + Ansible (IaC standard)
+
+#### 1. Initialiser et appliquer Terraform
 
 ```bash
-git clone https://github.com/Bergson26/projet-logistock.git
-cd projet-logistock
-docker-compose up -d
+cd terraform/
+terraform init
+terraform apply -var admin_cidr="<TON_IP>/32"
+```
+
+Terraform crée le VPC, le Security Group et l'instance EC2. L'IP publique est affichée en output.
+
+#### 2. Configurer le serveur via Ansible
+
+```bash
+ansible-playbook -i <IP_EC2>, -u ec2-user --private-key ../logistock-ssh-key.pem ../ansible/playbook.yml
 ```
 
 ---
@@ -136,13 +151,21 @@ docker-compose up -d
 
 Le pipeline se déclenche automatiquement à chaque push sur la branche `main`.
 
-**Étapes :**
-1. Checkout du code
-2. Build de l'image Docker
-3. Scan de sécurité Trivy — bloque sur toute CVE CRITICAL ou HIGH
-4. Déploiement en pré-production (port 8080) via SSH
-5. Health check automatique de la préprod (`/health`)
-6. Déploiement en production (port 5000) uniquement si le health check passe
+**11 étapes dans l'ordre :**
+
+| # | Étape | Outil | Bloquant |
+|---|---|---|---|
+| 1 | Checkout du code source | actions/checkout | — |
+| 2 | Tests automatisés | Pytest (15 cas) | Oui |
+| 3 | Analyse SAST Python | Bandit (-lll -iii) | Oui |
+| 4 | Détection de secrets Git | Gitleaks | Oui |
+| 5 | Build de l'image Docker | docker build | Oui |
+| 6 | Scan CVE image | Trivy (CRITICAL/HIGH) | Oui |
+| 7 | Scan secrets image | Trivy secrets | Oui |
+| 8 | Déploiement préprod | SSH → port 8080 | Oui |
+| 9 | Health check préprod | curl /health → HTTP 200 | Oui |
+| 10 | Déploiement prod | SSH → port 5000 | Oui |
+| 11 | Nettoyage images | docker image prune | Non |
 
 **Secrets GitHub requis :**
 - `AWS_HOST_IP` : adresse IP publique de l'EC2
