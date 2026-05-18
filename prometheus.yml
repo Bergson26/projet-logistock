@@ -25,3 +25,22 @@ scrape_configs:
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
+
+  # 5. Sondage HTTP via Blackbox Exporter (probe_success pour alerte API DOWN)
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://api-prod:5000/health
+    relabel_configs:
+      # L'adresse de la cible devient le parametre "target" de la requete au blackbox
+      - source_labels: [__address__]
+        target_label: __param_target
+      # On conserve l'URL sondee comme label "instance" dans les metriques
+      - source_labels: [__param_target]
+        target_label: instance
+      # Prometheus interroge le blackbox-exporter, pas directement la cible
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

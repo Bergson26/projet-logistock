@@ -75,4 +75,4 @@ aws ec2 run-instances \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Serveur-LogiStock-Prod}]'
 
 echo "L'instance EC2 demarre sur AWS."
-echo "Provisionnement termine : instance $TYPE_INSTANCE, region $REGION."
+echo "Instance EC2 prete. IP publique a recuperer dans la console AWS."

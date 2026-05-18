@@ -1,0 +1,21 @@
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: logistock-slack
+    receivers:
+      - uid: logistock-slack-receiver
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK_URL}
+          recipient: "#alertes-logistock"
+          username: "Grafana LogiStock"
+          icon_emoji: ":bell:"
+          title: |
+            [{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}
+          text: |
+            {{ range .Alerts }}
+            *Alerte :* {{ .Annotations.summary }}
+            *Severite :* {{ .Labels.severity }}
+            *Depuis :* {{ .StartsAt.Format "02/01/2006 15:04" }}
+            {{ end }}

@@ -52,7 +52,18 @@ services:
     networks:
       - logistock-network
 
-  # 5. Exportateur de metriques systeme (CPU, RAM, disque)
+  # 5. Sondage HTTP externe (probe_success pour alerte API DOWN)
+  blackbox-exporter:
+    image: prom/blackbox-exporter:latest
+    container_name: supervision-blackbox
+    restart: unless-stopped
+    volumes:
+      - ./blackbox.yml:/etc/blackbox_exporter/config.yml
+    # Aucun port expose sur l'hote : communication interne uniquement
+    networks:
+      - logistock-network
+
+  # 6. Exportateur de metriques systeme (CPU, RAM, disque)
   node-exporter:
     image: prom/node-exporter:latest
     container_name: supervision-node-exporter

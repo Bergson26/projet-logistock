@@ -292,3 +292,4 @@ curl -X POST http://<IP>:5000/api/articles \
 
 - Provisionnement : 2026-04-10 - Instance t3.micro, region eu-west-3, AMI ami-02ea01341a2884771
 - Instance active : i-0e5e90fbf37eff269 — IP : 15.188.50.241
+- HTTPS actif : https://logistock.duckdns.org (Let's Encrypt, expiration 2026-08-16)
