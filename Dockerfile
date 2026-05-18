@@ -4,6 +4,9 @@ FROM python:3.13-slim
 # Creation d'un repertoire de travail dedie dans le conteneur
 WORKDIR /app
 
+# Mise a jour des paquets systeme pour eliminer les CVE connues (libcap2, libsystemd0, libudev1)
+RUN apt-get update && apt-get upgrade -y && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # Copie stricte du fichier des dependances avant le code pour optimiser le cache Docker
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
