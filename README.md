@@ -4,48 +4,38 @@ Application de gestion d'inventaire pour la PME fictive LogiStock, réalisée da
 
 ## Contexte
 
-LogiStock est une PME qui a besoin de gérer son inventaire de manière fiable. L'objectif du projet est de concevoir et déployer une infrastructure cloud complète avec une approche DevSecOps : automatisation du déploiement, sécurisation du pipeline, supervision en temps réel et sauvegarde des données.
+LogiStock est une PME qui gère ~500 références EPI (casques, gilets, harnais) pour ~10 logisticiens. L'objectif : déployer une infrastructure cloud complète avec une approche DevSecOps — automatisation du déploiement, sécurisation du pipeline, supervision temps réel et sauvegarde automatique.
 
 ---
 
 ## Architecture globale
 
-```
-GitHub (code source)
-        |
-        | push sur main
-        v
-GitHub Actions (CI/CD)
-        |
-        |-- docker build
-        |-- trivy scan (CRITICAL/HIGH bloquant)
-        |-- déploiement SSH préprod (port 8080)
-        |-- health check préprod
-        |-- déploiement SSH prod (port 5000)
-        v
-AWS EC2 t3.micro — eu-west-3 (Paris)
-        |
-        |-- api-prod        (Flask + SQLite, port 5000)
-        |-- api-preprod     (Flask + SQLite, port 8080)
-        |-- prometheus      (collecte métriques, interne)
-        |-- grafana         (tableaux de bord, port 3000)
-        |-- node-exporter   (métriques système, interne)
-```
+![Architecture LogiStock — Infrastructure DevSecOps complète](architecture%20logistock.png)
+
+**Flux de haut en bas :**
+1. Le développeur fait un `git push main` → déclenche GitHub Actions (11 étapes DevSecOps)
+2. Terraform provisionne le VPC + Security Group + EC2 ; Ansible installe Docker + Compose
+3. nginx reçoit les requêtes HTTPS :443 (logistock.duckdns.org / Let's Encrypt) et reverse-proxie vers `api-prod :5000`
+4. Prometheus scrape les 5 cibles toutes les 15s ; Grafana affiche 5 panneaux et envoie les alertes vers Slack
 
 ---
 
 ## Stack technique
 
-| Composant        | Technologie                        |
-|------------------|------------------------------------|
-| Application      | Python / Flask / SQLite            |
-| Conteneurisation | Docker + Docker Compose v2.24.0    |
-| CI/CD            | GitHub Actions                     |
-| Sécurité image   | Trivy (scan CVE)                   |
-| Cloud            | AWS EC2 t3.micro (Free Tier)       |
-| OS serveur       | Amazon Linux 2023                  |
-| Supervision      | Prometheus + Grafana + node_exporter |
-| Sauvegarde       | Script Bash + crontab              |
+| Composant        | Technologie                                  |
+|------------------|----------------------------------------------|
+| Application      | Python 3.13 / Flask / SQLite                 |
+| Conteneurisation | Docker + Docker Compose v2.24.0              |
+| Reverse proxy    | nginx + Let's Encrypt (HTTPS :443)           |
+| CI/CD            | GitHub Actions — 11 étapes DevSecOps         |
+| Sécurité SAST    | Bandit (-lll -iii) + Gitleaks                |
+| Sécurité image   | Trivy (CVE CRITICAL/HIGH + secrets)          |
+| IaC              | Terraform (VPC + SG + EC2) + Ansible         |
+| Cloud            | AWS EC2 t3.micro Free Tier — eu-west-3       |
+| OS serveur       | Amazon Linux 2023                            |
+| Supervision      | Prometheus + Grafana + node-exporter + blackbox-exporter |
+| Alertes          | Grafana → webhook Slack (#alertes-logistock) |
+| Sauvegarde       | Script Bash + crontab 2h00 — rotation 7j     |
 
 ---
 
@@ -53,21 +43,38 @@ AWS EC2 t3.micro — eu-west-3 (Paris)
 
 ```
 projet-logistock/
-├── app.py                  # API Flask (articles, health, metrics)
-├── requirements.txt        # Dépendances Python
-├── Dockerfile              # Image python:3.13-slim
-├── docker-compose.yml      # 5 services : prod, préprod, prometheus, grafana, node-exporter
-├── prometheus.yml          # Configuration des jobs de scraping
-├── grafana-dashboard.json  # Dashboard exporté (5 panneaux + 2 alertes)
-├── backup.sh               # Script de sauvegarde automatique SQLite
-├── provision.sh            # Script Bash de provisionnement AWS (utilisé en production)
+├── .github/
+│   └── workflows/
+│       └── main.yml              ← Pipeline CI/CD DevSecOps (11 étapes)
+│
+├── app.py                        ← API Flask (routes, métriques Prometheus)
+├── test_app.py                   ← 15 tests automatisés (Pytest)
+├── Dockerfile                    ← Image python:3.13-slim + HEALTHCHECK + apt-get upgrade
+├── requirements.txt              ← Dépendances : flask, prometheus_client
+│
+├── docker-compose.yml            ← 6 services : prod, préprod, prometheus,
+│                                    grafana, node-exporter, blackbox-exporter
+├── prometheus.yml                ← Configuration scraping (5 jobs, 15s)
+├── grafana/
+│   └── provisioning/
+│       ├── dashboards/
+│       │   └── logistock.json    ← Dashboard exporté (5 panneaux)
+│       ├── datasources/
+│       │   └── prometheus.yml    ← Datasource Prometheus auto-provisionné
+│       └── alerting/
+│           ├── contact-points.yaml       ← Webhook Slack
+│           └── notification-policies.yaml ← Règles d'envoi alertes
+│
+├── nginx/
+│   └── logistock.conf            ← Configuration reverse proxy HTTPS
+│
+├── backup.sh                     ← Sauvegarde automatique SQLite (rotation 7j)
+├── provision.sh                  ← Provisionnement AWS via Bash + AWS CLI
+│
 ├── terraform/
-│   └── main.tf             # Infrastructure as Code — alternative Terraform à provision.sh
-├── ansible/
-│   └── playbook.yml        # Configuration du serveur : installation Docker + lancement docker-compose
-└── .github/
-    └── workflows/
-        └── main.yml        # Pipeline CI/CD GitHub Actions (11 étapes)
+│   └── main.tf                   ← IaC — VPC + Security Group + EC2
+└── ansible/
+    └── playbook.yml              ← Configuration serveur : Docker + Compose
 ```
 
 ---
@@ -88,17 +95,15 @@ Deux approches sont disponibles pour provisionner l'infrastructure :
 | Approche | Fichier | Statut |
 |---|---|---|
 | Script Bash + AWS CLI | `provision.sh` | Utilisé en production pour ce projet |
-| Infrastructure as Code | `terraform/main.tf` | Alternative IaC standard (recommandée) |
+| Infrastructure as Code | `terraform/main.tf` | Alternative IaC standard (recommandée en équipe) |
 
-La configuration du serveur (Docker, docker-compose) est ensuite gérée par Ansible (`ansible/playbook.yml`), qui représente la séparation standard **Terraform = provisionnement / Ansible = configuration**.
+La configuration du serveur (Docker, docker-compose) est ensuite gérée par Ansible (`ansible/playbook.yml`).
 
 ---
 
 ### Option A — Bash (utilisé en production)
 
 #### 1. Génération de la clé SSH
-
-La clé SSH est générée localement pour éviter les problèmes de format (CRLF) liés à AWS CLI sur Windows :
 
 ```bash
 ssh-keygen -t rsa -b 2048 -f logistock-ssh-key.pem -N ""
@@ -115,7 +120,7 @@ chmod +x provision.sh
 ./provision.sh
 ```
 
-Le script crée un Security Group (ports 22, 5000, 8080, 3000) et une instance EC2 t3.micro Amazon Linux 2023.
+Le script crée un Security Group (port 443 public, ports 22/8080/3000 admin uniquement) et une instance EC2 t3.micro Amazon Linux 2023.
 
 #### 3. Configuration du serveur via Ansible
 
@@ -123,35 +128,23 @@ Le script crée un Security Group (ports 22, 5000, 8080, 3000) et une instance E
 ansible-playbook -i <IP_EC2>, -u ec2-user --private-key logistock-ssh-key.pem ansible/playbook.yml
 ```
 
-Le playbook installe Docker, Docker Compose, clone le dépôt et lance tous les services.
-
 ---
 
 ### Option B — Terraform + Ansible (IaC standard)
-
-#### 1. Initialiser et appliquer Terraform
 
 ```bash
 cd terraform/
 terraform init
 terraform apply -var admin_cidr="<TON_IP>/32"
-```
 
-Terraform crée le VPC, le Security Group et l'instance EC2. L'IP publique est affichée en output.
-
-#### 2. Configurer le serveur via Ansible
-
-```bash
 ansible-playbook -i <IP_EC2>, -u ec2-user --private-key ../logistock-ssh-key.pem ../ansible/playbook.yml
 ```
 
 ---
 
-## Pipeline CI/CD
+## Pipeline CI/CD — 11 étapes DevSecOps
 
-Le pipeline se déclenche automatiquement à chaque push sur la branche `main`.
-
-**11 étapes dans l'ordre :**
+Le pipeline se déclenche automatiquement à chaque push sur `main`. **Si une étape échoue, le déploiement est bloqué.**
 
 | # | Étape | Outil | Bloquant |
 |---|---|---|---|
@@ -167,129 +160,269 @@ Le pipeline se déclenche automatiquement à chaque push sur la branche `main`.
 | 10 | Déploiement prod | SSH → port 5000 | Oui |
 | 11 | Nettoyage images | docker image prune | Non |
 
+**15 runs réalisés — dernier run vert ✅**
+
 **Secrets GitHub requis :**
 - `AWS_HOST_IP` : adresse IP publique de l'EC2
 - `AWS_SSH_KEY` : contenu de la clé privée PEM
+- `SLACK_WEBHOOK_URL` : webhook Grafana → Slack (ne jamais commiter en dur)
+
+---
+
+## Services Docker — 6 conteneurs
+
+| Service | Port | Rôle |
+|---|---|---|
+| api-prod | :5000 | Flask Production — CRUD articles EPI |
+| api-preprod | :8080 | Flask Préprod — validation CI/CD |
+| prometheus | interne | Collecte métriques toutes les 15s |
+| grafana | :3000 | Dashboard 5 panneaux + 2 alertes Slack |
+| node-exporter | interne | Métriques système CPU / RAM / Disque |
+| blackbox-exporter | interne | HTTP probe /health → probe_success |
 
 ---
 
 ## Supervision
 
-### Prometheus
+### Prometheus — 5 cibles
 
-Scraping toutes les 15 secondes sur 4 jobs :
-- `logistock-prod` → métriques applicatives Flask (port 5000)
-- `logistock-preprod` → métriques applicatives Flask (port 5000)
-- `node-exporter` → métriques système CPU/RAM/disque
+- `logistock-prod` → métriques Flask production (:5000/metrics)
+- `logistock-preprod` → métriques Flask préprod (:8080/metrics)
+- `node-exporter` → métriques système (:9100)
 - `prometheus` → auto-supervision
+- `blackbox-exporter` → sondage HTTP /health → génère `probe_success`
 
-Accès : `http://<IP>:9090` (interne uniquement via réseau Docker)
+### Grafana — 5 panneaux
 
-### Grafana
+| Panneau | Type | Valeur observée |
+|---|---|---|
+| CPU (%) | Gauge | 10,3 % |
+| RAM (%) | Gauge | 76,0 % |
+| Disque (%) | Gauge | 58,8 % |
+| Requêtes HTTP total | Stat | 1 246 requêtes |
+| Latence moyenne | Time series | Courbes api-prod + api-preprod |
 
-Accès : `http://<IP>:3000` (admin / admin par défaut)
+### 2 alertes Slack automatiques
 
-**Dashboard LogiStock - Supervision :**
-
-| Panneau              | Type        | Requête PromQL                                                                 |
-|----------------------|-------------|--------------------------------------------------------------------------------|
-| CPU (%)              | Gauge       | `100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)`            |
-| RAM (%)              | Gauge       | `100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100)` |
-| Disque (%)           | Gauge       | `100 - ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100)` |
-| Requêtes HTTP (total)| Stat        | `sum(logistock_requetes_total)`                                                 |
-| Latence moyenne (s)  | Time series | `rate(logistock_latence_secondes_sum[5m]) / rate(logistock_latence_secondes_count[5m])` |
-
-**Alertes configurées :**
-
-| Alerte                     | Condition              | Délai  |
-|----------------------------|------------------------|--------|
-| API LogiStock - Health DOWN | `probe_success` < 1   | 2 min  |
-| CPU critique - LogiStock   | CPU > 85%              | 5 min  |
-
-Notifications envoyées vers le contact point `logistock-alerts` (email).
+| Alerte | Condition | Délai | Canal |
+|---|---|---|---|
+| API LogiStock DOWN | `probe_success` < 1 | 2 min | #alertes-logistock |
+| CPU critique | CPU > 85% | 5 min | #alertes-logistock |
 
 ---
 
 ## Sauvegarde automatique
 
-Le script `backup.sh` copie la base SQLite avec un horodatage dans `/home/ec2-user/backups/`.
-
-- Rotation : 7 dernières sauvegardes conservées
-- Logs dans `/home/ec2-user/backups/backup.log`
-- Planification via crontab : tous les jours à 2h du matin
-
 ```bash
 # Vérifier le crontab
 crontab -l
+# → 0 2 * * * /home/ec2-user/backup.sh
 
 # Tester manuellement
 /home/ec2-user/backup.sh && cat /home/ec2-user/backups/backup.log
 ```
 
+- Rotation : 7 dernières sauvegardes conservées
+- Fenêtre de restauration : 7 jours
+
 ---
 
 ## API — Endpoints
 
-| Méthode | Route            | Description                          |
-|---------|------------------|--------------------------------------|
-| GET     | `/api/articles`  | Liste tous les articles              |
-| POST    | `/api/articles`  | Ajoute un article `{nom, quantite}`  |
-| GET     | `/health`        | Health check (utilisé par le CI/CD)  |
-| GET     | `/metrics`       | Métriques Prometheus                 |
+| Méthode | Route | Description |
+|---|---|---|
+| GET | `/` | Interface web — tableau des articles avec filtres |
+| GET | `/api/articles` | Liste tous les articles (JSON) |
+| POST | `/api/articles` | Ajoute un article |
+| PUT | `/api/articles/<id>` | Modifie un article |
+| DELETE | `/api/articles/<id>` | Supprime un article |
+| GET | `/health` | Health check (pipeline + Grafana) |
+| GET | `/metrics` | Métriques Prometheus |
 
-**Exemple :**
+---
+
+## Procédures opérationnelles
+
+### Déploiement depuis zéro
+
+**Prérequis**
+
+| Prérequis | Vérification |
+|---|---|
+| AWS CLI installé et configuré | `aws sts get-caller-identity` → retourne un ARN |
+| Clé SSH générée localement | `logistock-ssh-key.pem` + `.pem.pub` présents |
+| Terraform ≥ 1.5 installé | `terraform -version` |
+| Ansible ≥ 2.14 installé | `ansible --version` |
+| Secrets GitHub configurés | `AWS_HOST_IP`, `AWS_SSH_KEY`, `SLACK_WEBHOOK_URL` |
+
+**Étapes séquentielles**
+
 ```bash
-curl -X POST http://<IP>:5000/api/articles \
-  -H "Content-Type: application/json" \
-  -d '{"nom": "Casque LogiStock", "quantite": 50}'
+# 1. Générer et importer la clé SSH
+ssh-keygen -t rsa -b 2048 -f logistock-ssh-key.pem -N ""
+aws ec2 import-key-pair --key-name logistock-ssh-key \
+  --region eu-west-3 \
+  --public-key-material fileb://logistock-ssh-key.pem.pub
+
+# 2. Provisionner l'infrastructure AWS (Terraform)
+cd terraform/
+terraform init
+terraform apply -var admin_cidr="<VOTRE_IP>/32"
+# → noter l'IP publique affichée en output
+
+# 3. Configurer le serveur (Ansible)
+ansible-playbook -i <IP_EC2>, -u ec2-user \
+  --private-key ../logistock-ssh-key.pem \
+  ../ansible/playbook.yml
+# → installe Docker, Docker Compose, clone le repo, lance les 6 services
+
+# 4. Vérifier les services
+ssh -i logistock-ssh-key.pem ec2-user@<IP_EC2>
+docker ps
+# → 6 conteneurs doivent être en statut "Up" ou "healthy"
+
+# 5. Déclencher le premier pipeline
+git push origin main
+# → GitHub Actions lance les 11 étapes automatiquement
+```
+
+**Validation post-déploiement**
+
+```bash
+curl -I https://logistock.duckdns.org        # → HTTP/2 200
+curl https://logistock.duckdns.org/health    # → {"status": "ok"}
+curl https://logistock.duckdns.org/api/articles  # → JSON articles EPI
+curl -I http://<IP_EC2>:3000                 # → HTTP/1.1 200 (Grafana)
 ```
 
 ---
 
-## Difficultés rencontrées et solutions
+### Procédure de rollback
 
-### 1. Clé SSH corrompue (CRLF) sous Windows
+**Cas 1 — Rollback via Git (recommandé)**
 
-**Problème** : AWS CLI sur Windows génère les fichiers PEM avec des fins de ligne CRLF au lieu de LF. La clé privée était donc invalide pour OpenSSH, rendant toute connexion SSH impossible malgré une instance EC2 fonctionnelle.
+```bash
+# Sur la machine locale
+git revert HEAD
+git push origin main
+# → GitHub Actions redéploie automatiquement la version stable
+```
 
-**Solution** : Abandon de la génération de clé via AWS CLI. La clé RSA est désormais générée localement avec `ssh-keygen`, puis la clé publique est importée dans AWS avec `aws ec2 import-key-pair --public-key-material fileb://`. Cette approche garantit des fins de ligne correctes et reste reproductible sur tout OS.
+**Cas 2 — Rollback manuel sur le serveur**
 
----
+```bash
+ssh -i logistock-ssh-key.pem ec2-user@15.188.50.241
+cd /home/ec2-user/projet-logistock
 
-### 2. Mauvais utilisateur SSH (ubuntu vs ec2-user)
+# Revenir à l'image précédente
+docker images | grep logistock
+docker-compose stop api-prod
+docker tag logistock-api:<VERSION_STABLE> logistock-api:latest
+docker-compose up -d api-prod
+curl http://localhost:5000/health
+```
 
-**Problème** : Tentatives de connexion SSH avec l'utilisateur `ubuntu`, qui est l'utilisateur par défaut des AMI Ubuntu. L'AMI utilisée (`ami-02ea01341a2884771`) est Amazon Linux 2023, dont l'utilisateur par défaut est `ec2-user`.
+**Cas 3 — Déploiement d'urgence sans pipeline**
 
-**Solution** : Correction de l'utilisateur dans tous les scripts et dans la configuration GitHub Actions (`ec2-user@...`). Documentation de ce point dans le script `provision.sh` avec un commentaire explicite sur l'AMI et l'utilisateur associé.
-
----
-
-### 3. CVE bloquantes sur l'image python:3.9-slim
-
-**Problème** : Le scan Trivy a bloqué le pipeline en détectant des vulnérabilités de sévérité HIGH et CRITICAL dans l'image `python:3.9-slim`. C'est le comportement attendu du DevSecOps, mais il fallait corriger l'image.
-
-**Solution** : Migration vers `python:3.13-slim`, qui ne présente aucune CVE critique ou haute au moment du déploiement. Le pipeline est repassé au vert. Ce changement illustre concrètement l'intérêt du scan automatisé dans la chaîne CI/CD.
-
----
-
-### 4. docker compose non disponible sur Amazon Linux 2023
-
-**Problème** : La commande `docker compose` (plugin intégré) n'est pas disponible sur la version de Docker fournie par les dépôts Amazon Linux 2023. La commande retournait une erreur `unknown command`.
-
-**Solution** : Installation manuelle de `docker-compose` v2.24.0 (binaire standalone) depuis les releases GitHub dans `/usr/local/bin/`. Tous les scripts et le pipeline utilisent la commande avec tiret (`docker-compose`).
-
----
-
-### 5. crontab non disponible sur Amazon Linux 2023
-
-**Problème** : La commande `crontab` retournait `command not found` car le démon `crond` n'est pas installé par défaut sur Amazon Linux 2023.
-
-**Solution** : Installation du paquet `cronie` via `sudo dnf install -y cronie` et activation du service avec `sudo systemctl enable crond --now`. Le crontab fonctionne ensuite normalement.
+```bash
+ssh -i logistock-ssh-key.pem ec2-user@15.188.50.241
+cd /home/ec2-user/projet-logistock
+git pull origin main
+docker-compose pull && docker-compose up -d
+curl http://localhost:5000/health
+```
 
 ---
 
-## Infrastructure
+### Procédure d'incident — réponse aux alertes Grafana
 
-- Provisionnement : 2026-04-10 - Instance t3.micro, region eu-west-3, AMI ami-02ea01341a2884771
-- Instance active : i-0e5e90fbf37eff269 — IP : 15.188.50.241
-- HTTPS actif : https://logistock.duckdns.org (Let's Encrypt, expiration 2026-08-16)
+**Alerte : API LogiStock DOWN (`probe_success` < 1)**
+
+```bash
+# Diagnostic
+ssh -i logistock-ssh-key.pem ec2-user@15.188.50.241
+docker ps                                    # vérifier statut conteneurs
+docker logs logistock-prod --tail 50         # lire les erreurs
+curl http://localhost:5000/health            # tester en local
+
+# Résolution — conteneur arrêté
+docker-compose up -d api-prod
+
+# Résolution — crash loop
+docker-compose logs api-prod | grep ERROR
+docker-compose restart api-prod
+
+# Résolution — instance EC2 injoignable
+aws ec2 start-instances --instance-ids i-0e5e90fbf37eff269 --region eu-west-3
+```
+
+**Alerte : CPU critique (> 85% pendant 5 min)**
+
+```bash
+top -bn1 | head -20              # identifier le processus consommateur
+docker stats --no-stream         # CPU par conteneur
+docker-compose restart <service> # redémarrer le conteneur fautif
+```
+
+---
+
+### Mode opératoire de supervision
+
+**Accès aux outils**
+
+| Outil | URL | Identifiants |
+|---|---|---|
+| Grafana | http://15.188.50.241:3000 | admin / admin |
+| Application | https://logistock.duckdns.org | — (public) |
+
+**Lecture des 5 panneaux Grafana**
+
+| Panneau | Seuil normal | Seuil alerte | Action si dépassement |
+|---|---|---|---|
+| CPU (%) | < 50 % | > 85 % / 5 min | Identifier processus, redémarrer si nécessaire |
+| RAM (%) | < 80 % | > 90 % | Redémarrer les conteneurs non critiques |
+| Disque (%) | < 70 % | > 85 % | `docker image prune -a` |
+| Requêtes HTTP total | Croissance normale | Pic anormal | Vérifier logs pour activité suspecte |
+| Latence moyenne (s) | < 0,1 s | > 1 s | Vérifier charge CPU et requêtes DB |
+
+**Vérification quotidienne (< 2 min)**
+
+```bash
+docker ps --format "table {{.Names}}\t{{.Status}}"  # conteneurs actifs ?
+ls -lh /home/ec2-user/backups/ | tail -5             # dernière sauvegarde OK ?
+df -h /                                              # espace disque suffisant ?
+```
+
+---
+
+### Procédure de restauration testée
+
+```bash
+# 1. Lister les sauvegardes disponibles
+ls -lh /home/ec2-user/backups/inventaire_*.db
+
+# 2. Arrêter l'API
+docker-compose stop api-prod
+
+# 3. Restaurer la sauvegarde choisie
+cp /home/ec2-user/backups/inventaire_YYYYMMDD_HHMMSS.db \
+   /home/ec2-user/projet-logistock/data-prod/inventaire.db
+
+# 4. Redémarrer l'API
+docker-compose start api-prod
+
+# 5. Vérifier l'intégrité
+curl http://localhost:5000/api/articles | python3 -m json.tool | head -20
+curl https://logistock.duckdns.org/health
+# → {"status": "ok"} = restauration réussie
+```
+
+Fenêtre maximale de perte de données : **24h** (sauvegarde nightly à 2h00). Durée de restauration : **< 30 secondes**.
+
+---
+
+## Liens
+
+- **Application** : https://logistock.duckdns.org
+- **Grafana** : http://15.188.50.241:3000
+- **GitHub** : github.com/Bergson26/projet-logistock
