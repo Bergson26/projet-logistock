@@ -586,11 +586,11 @@ TEMPLATE_HTML = """
                         <td>
                             <div class="actions">
                                 <button class="btn btn-warning"
-                                    onclick="ouvrirEditModal({{ a[0] }}, '{{ a[1]|replace("'", "\\'") }}', {{ a[2] }}, '{{ a[3] }}', {{ a[4] }})">
+                                    onclick="ouvrirEditModal({{ a[0] }}, {{ a[1]|tojson }}, {{ a[2] }}, {{ a[3]|tojson }}, {{ a[4] }})">
                                     ✏️ Modifier
                                 </button>
                                 <button class="btn btn-danger"
-                                    onclick="supprimerArticle({{ a[0] }}, '{{ a[1]|replace("'", "\\'") }}')">
+                                    onclick="supprimerArticle({{ a[0] }}, {{ a[1]|tojson }})">
                                     🗑️ Supprimer
                                 </button>
                             </div>
