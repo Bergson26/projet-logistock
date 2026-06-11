@@ -1,6 +1,7 @@
 import sqlite3
 import os
-from flask import Flask, request, jsonify, Response, render_template_string, redirect, url_for
+import time
+from flask import Flask, g, request, jsonify, Response, render_template_string, redirect, url_for
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
 app = Flask(__name__)
@@ -782,6 +783,18 @@ def get_stats(articles):
         'alerte_critique': critique,
         'alerte_warning':  warning
     }
+
+
+@app.before_request
+def start_timer():
+    g.start = time.time()
+
+
+@app.after_request
+def record_latency(response):
+    if hasattr(g, 'start'):
+        LATENCE_REQUETES.observe(time.time() - g.start)
+    return response
 
 
 # Route 1 : Interface web
