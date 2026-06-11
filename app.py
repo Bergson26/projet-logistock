@@ -586,11 +586,18 @@ TEMPLATE_HTML = """
                         <td>
                             <div class="actions">
                                 <button class="btn btn-warning"
-                                    onclick="ouvrirEditModal({{ a[0] }}, {{ a[1]|tojson }}, {{ a[2] }}, {{ a[3]|tojson }}, {{ a[4] }})">
+                                    data-id="{{ a[0] }}"
+                                    data-nom="{{ a[1]|e }}"
+                                    data-quantite="{{ a[2] }}"
+                                    data-categorie="{{ a[3]|e }}"
+                                    data-seuil="{{ a[4] }}"
+                                    onclick="ouvrirEditModal(this)">
                                     ✏️ Modifier
                                 </button>
                                 <button class="btn btn-danger"
-                                    onclick="supprimerArticle({{ a[0] }}, {{ a[1]|tojson }})">
+                                    data-id="{{ a[0] }}"
+                                    data-nom="{{ a[1]|e }}"
+                                    onclick="supprimerArticle(this)">
                                     🗑️ Supprimer
                                 </button>
                             </div>
@@ -685,7 +692,9 @@ function filtrerTable() {
     document.getElementById('countLabel').textContent = count + ' article(s) affiché(s)';
 }
 
-function supprimerArticle(id, nom) {
+function supprimerArticle(btn) {
+    const id  = btn.dataset.id;
+    const nom = btn.dataset.nom;
     if (!confirm('Supprimer "' + nom + '" de l\'inventaire ?')) return;
     fetch('/api/articles/' + id, { method: 'DELETE' })
         .then(r => {
@@ -694,14 +703,15 @@ function supprimerArticle(id, nom) {
         });
 }
 
-function ouvrirEditModal(id, nom, quantite, categorie, seuil) {
-    editId = id;
-    document.getElementById('edit_nom').value      = nom;
-    document.getElementById('edit_quantite').value = quantite;
-    document.getElementById('edit_seuil').value    = seuil;
+function ouvrirEditModal(btn) {
+    editId = btn.dataset.id;
+    document.getElementById('edit_nom').value      = btn.dataset.nom;
+    document.getElementById('edit_quantite').value = btn.dataset.quantite;
+    document.getElementById('edit_seuil').value    = btn.dataset.seuil;
     const sel = document.getElementById('edit_categorie');
+    const cat = btn.dataset.categorie;
     for (let i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].value === categorie) { sel.selectedIndex = i; break; }
+        if (sel.options[i].value === cat) { sel.selectedIndex = i; break; }
     }
     document.getElementById('editModal').classList.add('open');
 }
