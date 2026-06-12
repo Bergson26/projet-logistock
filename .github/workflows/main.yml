@@ -71,8 +71,9 @@ jobs:
           key: ${{ secrets.AWS_SSH_KEY }}
           script: |
             cd /home/ec2-user/projet-logistock
-            git pull origin main
-            docker-compose up -d --build api-preprod
+            git fetch origin
+            git checkout origin/main -- app.py
+            docker-compose -f docker-compose.preprod.yml up -d --build
 
       # Etape 10 : Test fonctionnel de la pre-production avant deploiement en production
       - name: Test de sante de la pre-production
@@ -99,6 +100,7 @@ jobs:
           key: ${{ secrets.AWS_SSH_KEY }}
           script: |
             cd /home/ec2-user/projet-logistock
-            git pull origin main
-            docker-compose up -d --build api-prod
+            git fetch origin
+            git checkout origin/main -- app.py
+            docker-compose -f docker-compose.prod.yml up -d --build
             docker image prune -f
