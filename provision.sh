@@ -11,7 +11,7 @@ TYPE_INSTANCE="t3.micro"            # Instance eligible au Free Tier (budget 0)
 NOM_CLE="logistock-ssh-key"
 GROUPE_SECU="logistock-sec-group"
 # Remplacer par l'IP fixe de l'administrateur ou le CIDR de l'ecole pour le moindre privilege
-ADMIN_CIDR="0.0.0.0/0"
+ADMIN_CIDR="${1:?Erreur : specifier votre IP. Usage: bash provision.sh <IP>/32  (ex: bash provision.sh 203.0.113.10/32)}"
 
 echo "Demarrage du provisionnement de l'infrastructure..."
 
@@ -42,25 +42,27 @@ echo "Groupe de securite cree : $SG_ID"
 
 # 3. Configuration des regles reseau (Principe de moindre privilege)
 
-# Port 22 : acces SSH restreint a l'administrateur uniquement (moindre privilege)
+# Port 22 : SSH restreint a l'administrateur uniquement (cle PEM obligatoire)
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
     --protocol tcp --port 22 --cidr $ADMIN_CIDR
 
-# Port 5000 : ouvert au monde entier — acces des logisticiens a l'application de production
+# Port 80 : HTTP public — nginx redirige automatiquement vers HTTPS
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
-    --protocol tcp --port 5000 --cidr 0.0.0.0/0
+    --protocol tcp --port 80 --cidr 0.0.0.0/0
 
-# Port 8080 : pre-production restreinte a l'administrateur (pas d'acces public)
+# Port 443 : HTTPS public — nginx reverse proxy (prod + preprod + grafana)
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
-    --protocol tcp --port 8080 --cidr $ADMIN_CIDR
+    --protocol tcp --port 443 --cidr 0.0.0.0/0
 
-# Port 3000 : Grafana restreint a l'administrateur (donnees de supervision sensibles)
+# Port 3000 : Grafana restreint a l'administrateur (acces public via HTTPS/nginx)
 aws ec2 authorize-security-group-ingress --group-id $SG_ID \
     --region $REGION \
     --protocol tcp --port 3000 --cidr $ADMIN_CIDR
+
+# NOTE : Ports 5000 et 8080 non exposes — acces via nginx uniquement (HTTPS)
 
 echo "Regles reseau configurees."
 

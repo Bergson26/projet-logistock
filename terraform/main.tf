@@ -45,7 +45,7 @@ resource "aws_security_group" "logistock" {
   description = "Pare-feu restrictif pour API LogiStock et supervision"
   vpc_id      = data.aws_vpc.default.id
 
-  # Port 22 : SSH restreint a l'administrateur uniquement
+  # Port 22 : SSH restreint a l'administrateur uniquement (cle PEM obligatoire)
   ingress {
     from_port   = 22
     to_port     = 22
@@ -54,32 +54,36 @@ resource "aws_security_group" "logistock" {
     description = "SSH administrateur"
   }
 
-  # Port 5000 : Production accessible aux logisticiens (monde entier)
+  # Port 80 : HTTP public — nginx redirige vers HTTPS
   ingress {
-    from_port   = 5000
-    to_port     = 5000
+    from_port   = 80
+    to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "API Flask production"
+    description = "HTTP public (redirection HTTPS via nginx)"
   }
 
-  # Port 8080 : Pre-production restreinte a l'administrateur
+  # Port 443 : HTTPS public — nginx reverse proxy (prod, preprod, grafana)
   ingress {
-    from_port   = 8080
-    to_port     = 8080
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
-    cidr_blocks = [var.admin_cidr]
-    description = "API Flask pre-production"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "HTTPS public (prod + preprod + grafana via nginx)"
   }
 
   # Port 3000 : Grafana restreint a l'administrateur
+  # (acces public via https://logistock-grafana.duckdns.org)
   ingress {
     from_port   = 3000
     to_port     = 3000
     protocol    = "tcp"
     cidr_blocks = [var.admin_cidr]
-    description = "Grafana supervision"
+    description = "Grafana supervision (acces direct admin)"
   }
+
+  # NOTE : Ports 5000 (prod) et 8080 (preprod) non exposes publiquement.
+  # L'acces logisticiens se fait via nginx/HTTPS sur les ports 80 et 443.
 
   # Trafic sortant : autorise tout (mises a jour, pull Docker Hub)
   egress {
