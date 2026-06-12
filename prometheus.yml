@@ -17,7 +17,7 @@ scrape_configs:
   - job_name: 'logistock-preprod'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['api-preprod:5000']
+      - targets: ['logistock-preprod:5000']
 
   # 3. Supervision des ressources systeme via node_exporter
   - job_name: 'node-exporter'
@@ -37,7 +37,7 @@ scrape_configs:
     static_configs:
       - targets:
           - http://api-prod:5000/health
-          - http://api-preprod:5000/health
+          - http://logistock-preprod:5000/health
     relabel_configs:
       # L'adresse de la cible devient le parametre "target" de la requete au blackbox
       - source_labels: [__address__]
