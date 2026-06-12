@@ -72,7 +72,8 @@ jobs:
           script: |
             cd /home/ec2-user/projet-logistock
             git fetch origin
-            git checkout origin/main -- app.py
+            git checkout origin/main -- app.py docker-compose.preprod.yml docker-compose.prod.yml
+            docker network inspect logistock-network >/dev/null 2>&1 || docker network create logistock-network
             docker-compose -f docker-compose.preprod.yml up -d --build
 
       # Etape 10 : Test fonctionnel de la pre-production avant deploiement en production
@@ -101,6 +102,6 @@ jobs:
           script: |
             cd /home/ec2-user/projet-logistock
             git fetch origin
-            git checkout origin/main -- app.py
+            git checkout origin/main -- app.py docker-compose.preprod.yml docker-compose.prod.yml
             docker-compose -f docker-compose.prod.yml up -d --build
             docker image prune -f
