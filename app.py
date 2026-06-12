@@ -695,7 +695,7 @@ function filtrerTable() {
 function supprimerArticle(btn) {
     const id  = btn.dataset.id;
     const nom = btn.dataset.nom;
-    if (!confirm('Supprimer "' + nom + '" de l\'inventaire ?')) return;
+    if (!confirm(`Supprimer "${nom}" de l'inventaire ?`)) return;
     fetch('/api/articles/' + id, { method: 'DELETE' })
         .then(r => {
             if (r.ok) location.reload();

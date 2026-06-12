@@ -1,0 +1,53 @@
+groups:
+  - name: logistock-alertes
+    rules:
+
+      # API indisponible (prod ou preprod)
+      - alert: APIIndisponible
+        expr: probe_success == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API LogiStock inaccessible"
+          description: "L'endpoint {{ $labels.instance }} ne repond plus depuis 1 minute."
+
+      # Latence P95 trop elevee
+      - alert: LatenceElevee
+        expr: histogram_quantile(0.95, sum(rate(logistock_latence_secondes_bucket[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latence P95 superieure a 500ms"
+          description: "95% des requetes prennent plus de 500ms depuis 5 minutes."
+
+      # CPU serveur eleve
+      - alert: CPUEleve
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU superieur a 80%"
+          description: "Le CPU de l'EC2 depasse 80% depuis 5 minutes (valeur actuelle : {{ $value | printf \"%.1f\" }}%)."
+
+      # RAM serveur elevee
+      - alert: RAMElevee
+        expr: 100 - ((node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RAM superieure a 85%"
+          description: "La RAM de l'EC2 depasse 85% depuis 5 minutes (valeur actuelle : {{ $value | printf \"%.1f\" }}%)."
+
+      # Disque presque plein
+      - alert: DisquePlein
+        expr: 100 - ((node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100) > 90
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disque superieur a 90%"
+          description: "L'espace disque de l'EC2 depasse 90% (valeur actuelle : {{ $value | printf \"%.1f\" }}%)."

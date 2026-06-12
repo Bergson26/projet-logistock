@@ -2,6 +2,9 @@ global:
   scrape_interval: 15s      # Frequence de collecte des metriques
   evaluation_interval: 15s  # Frequence d'evaluation des regles d'alerte
 
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   # 1. Supervision de l'environnement de Production
   - job_name: 'logistock-prod'
@@ -34,6 +37,7 @@ scrape_configs:
     static_configs:
       - targets:
           - http://api-prod:5000/health
+          - http://api-preprod:5000/health
     relabel_configs:
       # L'adresse de la cible devient le parametre "target" de la requete au blackbox
       - source_labels: [__address__]

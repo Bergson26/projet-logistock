@@ -72,7 +72,7 @@ jobs:
           script: |
             cd /home/ec2-user/projet-logistock
             git fetch origin
-            git checkout origin/main -- app.py docker-compose.preprod.yml docker-compose.prod.yml grafana/provisioning/dashboards/logistock.json
+            git checkout origin/main -- app.py docker-compose.preprod.yml docker-compose.prod.yml prometheus.yml alerts.yml grafana/provisioning/dashboards/logistock.json
             docker network inspect logistock-network >/dev/null 2>&1 || docker network create logistock-network
             docker-compose -f docker-compose.preprod.yml up -d --build
 
@@ -102,7 +102,8 @@ jobs:
           script: |
             cd /home/ec2-user/projet-logistock
             git fetch origin
-            git checkout origin/main -- app.py docker-compose.preprod.yml docker-compose.prod.yml grafana/provisioning/dashboards/logistock.json
+            git checkout origin/main -- app.py docker-compose.preprod.yml docker-compose.prod.yml prometheus.yml alerts.yml grafana/provisioning/dashboards/logistock.json
             docker-compose -f docker-compose.prod.yml up -d --build
             docker image prune -f
             docker restart supervision-grafana
+            docker restart supervision-prometheus
